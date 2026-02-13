@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   deploy:
     docker:
-      - image: google/cloud-sdk:slim #Adding new image
+      - image: google/cloud-sdk:slim
 
     environment:
       REGION: us-central1
@@ -23,7 +23,7 @@ jobs:
 
       # -------- AUTH WITH WIF --------
       - run:
-          name: Authenticate with Workload Identity Federation
+          name: Authenticate with WIF
           command: |
             echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
@@ -43,14 +43,17 @@ jobs:
           command: |
             docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
 
+      # -------- DOCKER LOGIN USING ACCESS TOKEN --------
+      - run:
+          name: Docker Login via Access Token
+          command: |
+            ACCESS_TOKEN=$(gcloud auth print-access-token)
+            echo $ACCESS_TOKEN | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
+
       # -------- PUSH IMAGE --------
       - run:
           name: Push Docker Image
           command: |
-            ACCESS_TOKEN=$(gcloud auth print-access-token)
-
-            echo $ACCESS_TOKEN | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
-
             docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME
 
       # -------- DEPLOY CLOUD RUN --------
@@ -60,7 +63,6 @@ jobs:
             gcloud run deploy my-service \
               --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
               --region $REGION \
-              --platform managed \
               --allow-unauthenticated \
               --project $PROJECT_ID
 
