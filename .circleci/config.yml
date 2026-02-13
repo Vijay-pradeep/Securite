@@ -5,52 +5,44 @@ jobs:
     docker:
       - image: google/cloud-sdk:slim
 
-    environment:
-      IMAGE_NAME: app
-      REGION: us-central1
-
     steps:
       - checkout
+
       - setup_remote_docker
 
-      # ---------- AUTH WITH WIF ----------
       - run:
-    name: Authenticate with WIF
-    command: |
-      echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
+          name: Authenticate with WIF
+          command: |
+            echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-      AUDIENCE="https://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER"
+            AUDIENCE="https://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER"
 
-      gcloud iam workload-identity-pools create-cred-config \
-        $AUDIENCE \
-        --service-account=$SERVICE_ACCOUNT \
-        --credential-source-file=oidc_token.txt \
-        --output-file=cred.json
+            gcloud iam workload-identity-pools create-cred-config \
+              $AUDIENCE \
+              --service-account=$SERVICE_ACCOUNT \
+              --credential-source-file=oidc_token.txt \
+              --output-file=cred.json
 
-      gcloud auth login --cred-file=cred.json
-      gcloud config set project $PROJECT_ID
+            gcloud auth login --cred-file=cred.json
+            gcloud config set project $PROJECT_ID
 
-
-      # ---------- BUILD IMAGE ----------
       - run:
           name: Build Docker Image
           command: |
-            docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
+            docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/app .
 
-      # ---------- PUSH IMAGE ----------
       - run:
           name: Push Docker Image
           command: |
-            gcloud auth configure-docker $REGION-docker.pkg.dev
-            docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME
+            gcloud auth configure-docker us-central1-docker.pkg.dev
+            docker push us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/app
 
-      # ---------- DEPLOY CLOUD RUN ----------
       - run:
           name: Deploy to Cloud Run
           command: |
             gcloud run deploy my-service \
-              --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
-              --region $REGION \
+              --image us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/app \
+              --region us-central1 \
               --platform managed \
               --allow-unauthenticated
 
