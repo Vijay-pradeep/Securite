@@ -8,7 +8,7 @@ jobs:
     environment:
       REGION: us-central1
       IMAGE_NAME: app
-      GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES: "1"   # allow WIF executable
+      GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES: "1"
 
     steps:
       - checkout
@@ -22,7 +22,7 @@ jobs:
             apt-get update
             apt-get install -y docker.io
 
-      # -------- AUTH WITH WIF (EXECUTABLE MODE) --------
+      # -------- AUTH WITH WIF (EXECUTABLE + OIDC V2) --------
       - run:
           name: Authenticate with WIF
           command: |
@@ -31,7 +31,7 @@ jobs:
             gcloud iam workload-identity-pools create-cred-config \
               $AUDIENCE \
               --service-account=$SERVICE_ACCOUNT \
-              --executable-command="echo $CIRCLE_OIDC_TOKEN" \
+              --executable-command="echo $CIRCLE_OIDC_TOKEN_V2" \
               --output-file=cred.json
 
             gcloud auth login --cred-file=cred.json
