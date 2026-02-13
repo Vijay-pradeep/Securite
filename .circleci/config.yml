@@ -27,8 +27,7 @@ jobs:
           command: |
             echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-            # Write external_account credentials manually
-            cat > cred.json << 'EOF'
+            cat > cred.json << \EOF
             {
               "type": "external_account",
               "audience": "//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider",
@@ -42,7 +41,7 @@ jobs:
                 }
               }
             }
-            EOF
+            \EOF
 
             export GOOGLE_APPLICATION_CREDENTIALS="$PWD/cred.json"
             gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS"
