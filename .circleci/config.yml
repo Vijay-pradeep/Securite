@@ -19,7 +19,7 @@ jobs:
           name: Install Docker CLI
           command: |
             apt-get update
-            apt-get install -y docker.io
+            apt-get install -y docker.io jq
 
       # -------- AUTH WITH WIF --------
       - run:
@@ -27,15 +27,25 @@ jobs:
           command: |
             echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-            AUDIENCE="//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider"
+            # Write external_account credentials manually
+            cat > cred.json << 'EOF'
+            {
+              "type": "external_account",
+              "audience": "//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider",
+              "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+              "token_url": "https://sts.googleapis.com/v1/token",
+              "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/circleci-sa@vijayproject-486406.iam.gserviceaccount.com:generateAccessToken",
+              "credential_source": {
+                "file": "oidc_token.txt",
+                "format": {
+                  "type": "text"
+                }
+              }
+            }
+            EOF
 
-            gcloud iam workload-identity-pools create-cred-config \
-              $AUDIENCE \
-              --service-account=$SERVICE_ACCOUNT \
-              --credential-source-file=oidc_token.txt \
-              --output-file=cred.json
-
-            gcloud auth login --cred-file=cred.json
+            export GOOGLE_APPLICATION_CREDENTIALS="$PWD/cred.json"
+            gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS"
 
       # -------- BUILD DOCKER IMAGE --------
       - run:
@@ -48,7 +58,7 @@ jobs:
           name: Docker Login via Access Token
           command: |
             ACCESS_TOKEN=$(gcloud auth print-access-token)
-            echo $ACCESS_TOKEN | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
+            echo "$ACCESS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
       # -------- PUSH IMAGE --------
       - run:
