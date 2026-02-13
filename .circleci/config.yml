@@ -7,42 +7,49 @@ jobs:
 
     environment:
       IMAGE_NAME: app
+      REGION: us-central1
 
     steps:
       - checkout
       - setup_remote_docker
 
+      # ---------- AUTH WITH WIF ----------
       - run:
-          name: Authenticate with WIF
+          name: Authenticate with Workload Identity Federation
           command: |
             echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
+            AUDIENCE="//iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER"
+
             gcloud iam workload-identity-pools create-cred-config \
-            projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER \
-            --service-account=$SERVICE_ACCOUNT \
-            --credential-source-file=oidc_token.txt \
-            --output-file=cred.json
+              $AUDIENCE \
+              --service-account=$SERVICE_ACCOUNT \
+              --credential-source-file=oidc_token.txt \
+              --output-file=cred.json
 
             gcloud auth login --cred-file=cred.json
             gcloud config set project $PROJECT_ID
 
+      # ---------- BUILD IMAGE ----------
       - run:
           name: Build Docker Image
           command: |
-            docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
+            docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
 
+      # ---------- PUSH IMAGE ----------
       - run:
-          name: Push Image
+          name: Push Docker Image
           command: |
-            gcloud auth configure-docker us-central1-docker.pkg.dev
-            docker push us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME
+            gcloud auth configure-docker $REGION-docker.pkg.dev
+            docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME
 
+      # ---------- DEPLOY CLOUD RUN ----------
       - run:
           name: Deploy to Cloud Run
           command: |
             gcloud run deploy my-service \
-              --image us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
-              --region us-central1 \
+              --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
+              --region $REGION \
               --platform managed \
               --allow-unauthenticated
 
