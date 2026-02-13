@@ -22,7 +22,7 @@ jobs:
             apt-get update
             apt-get install -y docker.io
 
-      # -------- AUTH WITH WIF (EXECUTABLE + OIDC V2) --------
+      # -------- AUTH WITH WIF (EXECUTABLE MODE) --------
       - run:
           name: Authenticate with WIF
           command: |
@@ -31,8 +31,11 @@ jobs:
             gcloud iam workload-identity-pools create-cred-config \
               $AUDIENCE \
               --service-account=$SERVICE_ACCOUNT \
-              --executable-command="echo $CIRCLE_OIDC_TOKEN_V2" \
+              --executable-command="echo \$CIRCLE_OIDC_TOKEN_V2" \
               --output-file=cred.json
+
+            # Explicit credential file
+            export GOOGLE_APPLICATION_CREDENTIALS=cred.json
 
             gcloud auth login --cred-file=cred.json
 
