@@ -47,7 +47,10 @@ jobs:
       - run:
           name: Push Docker Image
           command: |
-            gcloud auth configure-docker $REGION-docker.pkg.dev --project=$PROJECT_ID
+            ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+            echo $ACCESS_TOKEN | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
+
             docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME
 
       # -------- DEPLOY CLOUD RUN --------
