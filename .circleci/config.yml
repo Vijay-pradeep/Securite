@@ -15,20 +15,21 @@ jobs:
 
       # ---------- AUTH WITH WIF ----------
       - run:
-          name: Authenticate with Workload Identity Federation
-          command: |
-            echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
+    name: Authenticate with WIF
+    command: |
+      echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-            AUDIENCE="//iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER"
+      AUDIENCE="https://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER"
 
-            gcloud iam workload-identity-pools create-cred-config \
-              $AUDIENCE \
-              --service-account=$SERVICE_ACCOUNT \
-              --credential-source-file=oidc_token.txt \
-              --output-file=cred.json
+      gcloud iam workload-identity-pools create-cred-config \
+        $AUDIENCE \
+        --service-account=$SERVICE_ACCOUNT \
+        --credential-source-file=oidc_token.txt \
+        --output-file=cred.json
 
-            gcloud auth login --cred-file=cred.json
-            gcloud config set project $PROJECT_ID
+      gcloud auth login --cred-file=cred.json
+      gcloud config set project $PROJECT_ID
+
 
       # ---------- BUILD IMAGE ----------
       - run:
