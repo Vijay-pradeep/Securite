@@ -21,7 +21,7 @@ jobs:
             apt-get update
             apt-get install -y docker.io
 
-      # -------- AUTH WITH WIF (APPLICATION DEFAULT) --------
+      # -------- AUTH WITH WIF --------
       - run:
           name: Authenticate with WIF
           command: |
@@ -35,7 +35,6 @@ jobs:
               --credential-source-file=oidc_token.txt \
               --output-file=cred.json
 
-            # MACHINE / CI STYLE AUTH
             gcloud auth login --cred-file=cred.json
 
       # -------- BUILD DOCKER IMAGE --------
@@ -48,7 +47,7 @@ jobs:
       - run:
           name: Docker Login via Access Token
           command: |
-            ACCESS_TOKEN=$(gcloud auth application-default print-access-token)
+            ACCESS_TOKEN=$(gcloud auth print-access-token)
             echo "$ACCESS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
       # -------- PUSH IMAGE --------
