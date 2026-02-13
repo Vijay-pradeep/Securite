@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   deploy:
     docker:
-      - image: google/cloud-sdk:slim
+      - image: cimg/base:stable
 
     environment:
       REGION: us-central1
