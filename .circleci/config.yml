@@ -1,27 +1,40 @@
 version: 2.1
 
 jobs:
-  build-and-run:
+  deploy:
     docker:
-      - image: cimg/base:stable
+      - image: google/cloud-sdk:slim
 
     steps:
       - checkout
-
       - setup_remote_docker
 
       - run:
-          name: Build Docker Image
+          name: Authenticate WIF
           command: |
-            docker build -t my-app .
+            gcloud auth login --cred-file=$GOOGLE_WIF_CRED
+            gcloud config set project $PROJECT_ID
 
       - run:
-          name: Run Container
+          name: Build Docker
           command: |
-            docker run -d -p 3000:3000 my-app
+            docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/app .
+
+      - run:
+          name: Push Image
+          command: |
+            gcloud auth configure-docker us-central1-docker.pkg.dev
+            docker push us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/app
+
+      - run:
+          name: Deploy Cloud Run
+          command: |
+            gcloud run deploy my-service \
+              --image us-central1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/app \
+              --region us-central1 \
+              --allow-unauthenticated
 
 workflows:
-  version: 2
-  build:
+  deploy-workflow:
     jobs:
-      - build-and-run
+      - deploy
