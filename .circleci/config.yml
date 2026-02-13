@@ -16,15 +16,16 @@ jobs:
 
       # ---- Install tools ----
       - run:
-          name: Install Docker + jq
+          name: Install Docker + jq + curl
           command: |
             apt-get update
             apt-get install -y docker.io jq curl
 
-      # -------- EXCHANGE OIDC FOR GCP ACCESS TOKEN --------
+      # -------- TOKEN EXCHANGE (OIDC -> STS -> GCP ACCESS TOKEN) --------
       - run:
-          name: STS Token Exchange
+          name: Get GCP Access Token via WIF
           command: |
+            # STEP 1: CircleCI OIDC -> STS token
             STS_TOKEN=$(curl -s -X POST https://sts.googleapis.com/v1/token \
               -H "Content-Type: application/json" \
               -d "{
@@ -35,16 +36,24 @@ jobs:
                 \"subjectToken\": \"$CIRCLE_OIDC_TOKEN_V2\"
               }" | jq -r .access_token)
 
-            echo "STS_TOKEN=$STS_TOKEN" >> $BASH_ENV
+            # STEP 2: STS token -> Service Account access token
+            ACCESS_TOKEN=$(curl -s -X POST \
+              "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$SERVICE_ACCOUNT:generateAccessToken" \
+              -H "Authorization: Bearer $STS_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{ "scope": ["https://www.googleapis.com/auth/cloud-platform"] }' \
+              | jq -r .accessToken)
+
+            echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $BASH_ENV
 
       # -------- DOCKER LOGIN --------
       - run:
           name: Docker Login
           command: |
             source $BASH_ENV
-            echo "$STS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
+            echo "$ACCESS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
-      # -------- BUILD DOCKER IMAGE --------
+      # -------- BUILD IMAGE --------
       - run:
           name: Build Docker Image
           command: |
@@ -61,7 +70,8 @@ jobs:
           name: Deploy to Cloud Run
           command: |
             source $BASH_ENV
-            gcloud auth activate-access-token $STS_TOKEN
+
+            gcloud auth activate-access-token $ACCESS_TOKEN
 
             gcloud run deploy my-service \
               --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
