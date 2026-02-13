@@ -14,50 +14,41 @@ jobs:
 
       - setup_remote_docker
 
-      # ---- Install tools ----
+      # ---- Install Docker CLI ----
       - run:
-          name: Install Docker + jq + curl
+          name: Install Docker CLI
           command: |
             apt-get update
-            apt-get install -y docker.io jq curl
+            apt-get install -y docker.io
 
-      # -------- TOKEN EXCHANGE (OIDC -> STS -> GCP ACCESS TOKEN) --------
+      # -------- AUTH WITH WIF --------
       - run:
-          name: Get GCP Access Token via WIF
+          name: Authenticate with WIF
           command: |
-            # STEP 1: CircleCI OIDC -> STS token
-            STS_TOKEN=$(curl -s -X POST https://sts.googleapis.com/v1/token \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"audience\": \"//iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER\",
-                \"grantType\": \"urn:ietf:params:oauth:grant-type:token-exchange\",
-                \"requestedTokenType\": \"urn:ietf:params:oauth:token-type:access_token\",
-                \"subjectTokenType\": \"urn:ietf:params:oauth:token-type:jwt\",
-                \"subjectToken\": \"$CIRCLE_OIDC_TOKEN_V2\"
-              }" | jq -r .access_token)
+            echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-            # STEP 2: STS token -> Service Account access token
-            ACCESS_TOKEN=$(curl -s -X POST \
-              "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$SERVICE_ACCOUNT:generateAccessToken" \
-              -H "Authorization: Bearer $STS_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{ "scope": ["https://www.googleapis.com/auth/cloud-platform"] }' \
-              | jq -r .accessToken)
+            AUDIENCE="//iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER"
 
-            echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $BASH_ENV
+            gcloud iam workload-identity-pools create-cred-config \
+              $AUDIENCE \
+              --service-account=$SERVICE_ACCOUNT \
+              --credential-source-file=oidc_token.txt \
+              --output-file=cred.json
 
-      # -------- DOCKER LOGIN --------
-      - run:
-          name: Docker Login
-          command: |
-            source $BASH_ENV
-            echo "$ACCESS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
+            gcloud auth login --cred-file=cred.json
 
-      # -------- BUILD IMAGE --------
+      # -------- BUILD DOCKER IMAGE --------
       - run:
           name: Build Docker Image
           command: |
             docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
+
+      # -------- DOCKER LOGIN USING ACCESS TOKEN --------
+      - run:
+          name: Docker Login via Access Token
+          command: |
+            ACCESS_TOKEN=$(gcloud auth print-access-token)
+            echo $ACCESS_TOKEN | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
       # -------- PUSH IMAGE --------
       - run:
@@ -69,10 +60,6 @@ jobs:
       - run:
           name: Deploy to Cloud Run
           command: |
-            source $BASH_ENV
-
-            gcloud auth activate-access-token $ACCESS_TOKEN
-
             gcloud run deploy my-service \
               --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
               --region $REGION \
