@@ -36,7 +36,7 @@ jobs:
               --output-file=cred.json
 
             # MACHINE / CI STYLE AUTH
-            gcloud auth application-default login --cred-file=cred.json
+            gcloud auth login --cred-file=cred.json
 
       # -------- BUILD DOCKER IMAGE --------
       - run:
