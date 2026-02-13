@@ -8,49 +8,47 @@ jobs:
     environment:
       REGION: us-central1
       IMAGE_NAME: app
-      GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES: "1"
 
     steps:
       - checkout
 
       - setup_remote_docker
 
-      # ---- Install Docker CLI ----
+      # ---- Install tools ----
       - run:
-          name: Install Docker CLI
+          name: Install Docker + jq
           command: |
             apt-get update
-            apt-get install -y docker.io
+            apt-get install -y docker.io jq curl
 
-      # -------- AUTH WITH WIF (EXECUTABLE MODE) --------
+      # -------- EXCHANGE OIDC FOR GCP ACCESS TOKEN --------
       - run:
-          name: Authenticate with WIF
+          name: STS Token Exchange
           command: |
-            AUDIENCE="projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER"
+            STS_TOKEN=$(curl -s -X POST https://sts.googleapis.com/v1/token \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"audience\": \"//iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL/providers/$WIF_PROVIDER\",
+                \"grantType\": \"urn:ietf:params:oauth:grant-type:token-exchange\",
+                \"requestedTokenType\": \"urn:ietf:params:oauth:token-type:access_token\",
+                \"subjectTokenType\": \"urn:ietf:params:oauth:token-type:jwt\",
+                \"subjectToken\": \"$CIRCLE_OIDC_TOKEN_V2\"
+              }" | jq -r .access_token)
 
-            gcloud iam workload-identity-pools create-cred-config \
-              $AUDIENCE \
-              --service-account=$SERVICE_ACCOUNT \
-              --executable-command="echo \$CIRCLE_OIDC_TOKEN_V2" \
-              --output-file=cred.json
+            echo "STS_TOKEN=$STS_TOKEN" >> $BASH_ENV
 
-            # Explicit credential file
-            export GOOGLE_APPLICATION_CREDENTIALS=cred.json
-
-            gcloud auth login --cred-file=cred.json
+      # -------- DOCKER LOGIN --------
+      - run:
+          name: Docker Login
+          command: |
+            source $BASH_ENV
+            echo "$STS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
       # -------- BUILD DOCKER IMAGE --------
       - run:
           name: Build Docker Image
           command: |
             docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
-
-      # -------- DOCKER LOGIN USING ACCESS TOKEN --------
-      - run:
-          name: Docker Login via Access Token
-          command: |
-            ACCESS_TOKEN=$(gcloud auth print-access-token)
-            echo "$ACCESS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
 
       # -------- PUSH IMAGE --------
       - run:
@@ -62,6 +60,9 @@ jobs:
       - run:
           name: Deploy to Cloud Run
           command: |
+            source $BASH_ENV
+            gcloud auth activate-access-token $STS_TOKEN
+
             gcloud run deploy my-service \
               --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
               --region $REGION \
