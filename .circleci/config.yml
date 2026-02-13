@@ -14,7 +14,7 @@ jobs:
 
       - setup_remote_docker
 
-      # ----------- AUTH WITH WIF -----------
+      # -------- AUTH WITH WIF --------
       - run:
           name: Authenticate with Workload Identity Federation
           command: |
@@ -29,22 +29,21 @@ jobs:
               --output-file=cred.json
 
             gcloud auth login --cred-file=cred.json
-            gcloud config set project $PROJECT_ID
 
-      # ----------- BUILD DOCKER IMAGE -----------
+      # -------- BUILD DOCKER IMAGE --------
       - run:
           name: Build Docker Image
           command: |
             docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
 
-      # ----------- PUSH IMAGE -----------
+      # -------- PUSH IMAGE --------
       - run:
           name: Push Docker Image
           command: |
-            gcloud auth configure-docker $REGION-docker.pkg.dev
+            gcloud auth configure-docker $REGION-docker.pkg.dev --project=$PROJECT_ID
             docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME
 
-      # ----------- DEPLOY CLOUD RUN -----------
+      # -------- DEPLOY CLOUD RUN --------
       - run:
           name: Deploy to Cloud Run
           command: |
@@ -52,7 +51,8 @@ jobs:
               --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
               --region $REGION \
               --platform managed \
-              --allow-unauthenticated
+              --allow-unauthenticated \
+              --project $PROJECT_ID
 
 workflows:
   deploy-workflow:
