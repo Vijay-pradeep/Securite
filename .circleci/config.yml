@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   deploy:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/gcp:2023.10
 
     environment:
       REGION: us-central1
