@@ -14,9 +14,9 @@ jobs:
 
       - setup_remote_docker
 
-      # ---- Install Docker CLI ----
+      # ---- Install Docker CLI + jq ----
       - run:
-          name: Install Docker CLI
+          name: Install Docker CLI and jq
           command: |
             apt-get update
             apt-get install -y docker.io jq
@@ -25,9 +25,10 @@ jobs:
       - run:
           name: Authenticate with WIF
           command: |
+            # Save CircleCI OIDC token to file
             echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-            # Create cred.json manually (no heredoc)
+            # Create external_account credentials JSON
             jq -n \
               --arg audience "//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider" \
               --arg sa "circleci-sa@vijayproject-486406.iam.gserviceaccount.com" \
