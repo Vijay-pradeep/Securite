@@ -27,8 +27,7 @@ jobs:
           command: |
             echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-            AUDIENCE="//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider
-"
+            AUDIENCE="//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider"
 
             gcloud iam workload-identity-pools create-cred-config \
               $AUDIENCE \
