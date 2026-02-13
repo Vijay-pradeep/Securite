@@ -8,6 +8,7 @@ jobs:
     environment:
       REGION: us-central1
       IMAGE_NAME: app
+      GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES: "1"   # allow WIF executable
 
     steps:
       - checkout
