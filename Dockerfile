@@ -1,11 +1,22 @@
-FROM nginx:alpine
+FROM node:18
 
-# Copy nginx config that listens on 8080
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Create app directory
+WORKDIR /app
 
-# Copy your static site
-COPY . /usr/share/nginx/html
+# Copy package.json first (for caching)
+COPY backend/package.json ./package.json
 
+# Install dependencies
+RUN npm install
+
+# Copy backend code
+COPY backend/ .
+
+# Copy frontend (HTML + images)
+COPY frontend/ ./frontend
+
+# Expose port for Cloud Run
 EXPOSE 8080
 
-CMD ["nginx", "-g", "daemon off;"]
+# Start server
+CMD ["node", "server.js"]

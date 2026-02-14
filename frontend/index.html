@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My App Login</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+    }
+
+    .card {
+      background: white;
+      width: 340px;
+      padding: 30px;
+      border-radius: 14px;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+    }
+
+    .logo {
+      width: 70px;
+      margin-bottom: 10px;
+    }
+
+    input {
+      width: 90%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 6px;
+      background: #667eea;
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #5a67d8;
+    }
+
+    #successView {
+      display: none;
+    }
+
+    .success-img {
+      width: 120px;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+
+    <!-- LOGIN VIEW -->
+    <div id="loginView">
+      <img src="logo.png" class="logo" alt="logo">
+      <h2>Login</h2>
+
+      <input id="username" placeholder="Username">
+      <input id="password" type="password" placeholder="Password">
+
+      <button onclick="login()">Login</button>
+      <p id="result"></p>
+    </div>
+
+    <!-- SUCCESS VIEW -->
+    <div id="successView">
+      <h2>Welcome 🎉</h2>
+      <p>Login Successful</p>
+      <img src="success.png" class="success-img" alt="success">
+    </div>
+
+  </div>
+
+<script>
+async function login() {
+  const username = document.getElementById("username").value;
+  const password = document.getElementById("password").value;
+
+  const res = await fetch("/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+
+  const data = await res.json();
+
+  if (data.message === "Login successful") {
+    document.getElementById("loginView").style.display = "none";
+    document.getElementById("successView").style.display = "block";
+  } else {
+    document.getElementById("result").innerText = data.message;
+  }
+}
+</script>
+
+</body>
+</html>
