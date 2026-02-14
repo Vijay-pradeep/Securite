@@ -75,6 +75,7 @@ jobs:
               --region $REGION \
               --allow-unauthenticated \
               --project $PROJECT_ID
+              --port 8080
 
 workflows:
   deploy-workflow:
