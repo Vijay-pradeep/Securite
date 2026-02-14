@@ -74,7 +74,7 @@ jobs:
               --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
               --region $REGION \
               --allow-unauthenticated \
-              --project $PROJECT_ID
+              --project $PROJECT_ID \
               --port 8080
 
 workflows:
