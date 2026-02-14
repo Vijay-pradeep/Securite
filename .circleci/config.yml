@@ -75,9 +75,120 @@ jobs:
               --region $REGION \
               --allow-unauthenticated \
               --project $PROJECT_ID \
-              --port 8080
+              --port=8080
+
+      # -------- CAPTURE CLOUD RUN URL FOR DAST --------
+      - run:
+          name: Capture Cloud Run URL
+          command: |
+            URL=$(gcloud run services describe my-service \
+              --region=$REGION \
+              --project=$PROJECT_ID \
+              --format='value(status.url)')
+            echo "CLOUD_RUN_URL=${URL}"
+            echo "CLOUD_RUN_URL=${URL}" > cloudrun_url.txt
+
+      - persist_to_workspace:
+          root: .
+          paths:
+            - cloudrun_url.txt
+
+
+  # ---------- SAST JOB ----------
+  sast:
+    docker:
+      - image: cimg/node:18.20
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies (if Node app)
+          command: |
+            if [ -f package-lock.json ]; then
+              npm ci
+            elif [ -f package.json ]; then
+              npm install
+            else
+              echo "No package.json found, skipping Node dependency install"
+            fi
+      - run:
+          name: Run SAST (npm audit)
+          command: |
+            if [ -f package.json ]; then
+              npm audit --audit-level=high
+            else
+              echo "No package.json, skipping npm audit"
+            fi
+
+
+  # ---------- SECRET SCAN JOB ----------
+  secret-scan:
+    docker:
+      - image: zricethezav/gitleaks:latest
+    steps:
+      - checkout
+      - run:
+          name: Scan for secrets with gitleaks
+          command: |
+            gitleaks detect --source . --no-git -v
+
+
+  # ---------- POLICY CHECK (OPA) ----------
+  policy-check:
+    docker:
+      - image: openpolicyagent/opa:latest
+    steps:
+      - checkout
+      - run:
+          name: Run OPA policy checks (if policies exist)
+          command: |
+            if [ -d policy ]; then
+              opa test policy/ -v
+            else
+              echo "No policy/ directory found, skipping OPA tests"
+            fi
+
+
+  # ---------- DAST (OWASP ZAP) ----------
+  dast:
+    docker:
+      - image: owasp/zap2docker-stable
+    steps:
+      - attach_workspace:
+          at: /workspace
+      - run:
+          name: Read Cloud Run URL
+          command: |
+            if [ ! -f /workspace/cloudrun_url.txt ]; then
+              echo "cloudrun_url.txt not found; cannot run DAST"
+              exit 1
+            fi
+            URL=$(grep CLOUD_RUN_URL /workspace/cloudrun_url.txt | cut -d'=' -f2)
+            echo "Target URL: $URL"
+            echo "$URL" > target_url.txt
+
+      - run:
+          name: Run OWASP ZAP baseline scan
+          command: |
+            TARGET=$(cat target_url.txt)
+            echo "Running ZAP baseline scan against $TARGET"
+            zap-baseline.py -t "$TARGET" -r zap-report.html || true
+
+      - store_artifacts:
+          path: zap-report.html
+          destination: zap-report.html
+
 
 workflows:
   deploy-workflow:
     jobs:
-      - deploy
+      - sast
+      - secret-scan
+      - policy-check
+      - deploy:
+          requires:
+            - sast
+            - secret-scan
+            - policy-check
+      - dast:
+          requires:
+            - deploy
