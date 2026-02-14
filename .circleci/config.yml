@@ -121,15 +121,23 @@ jobs:
 
 
   # ---------- SECRET SCAN JOB ----------
-  secret-scan:
-    docker:
-      - image: zricethezav/gitleaks:latest
-    steps:
-      - checkout
-      - run:
-          name: Scan for secrets with gitleaks
-          command: |
-            gitleaks detect --source . --no-git -v
+secret-scan:
+  docker:
+    - image: alpine:3.20
+  steps:
+    - checkout
+    - run:
+        name: Install gitleaks
+        command: |
+          apk add --no-cache wget
+          wget -O gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz
+          mv gitleaks /usr/local/bin/gitleaks
+    - run:
+        name: Scan for secrets with gitleaks
+        command: |
+          gitleaks detect --source . --no-git -v
+
 
 
   # ---------- POLICY CHECK (OPA) ----------
