@@ -25,10 +25,8 @@ jobs:
       - run:
           name: Authenticate with WIF
           command: |
-            # Save CircleCI OIDC token to file
             echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
 
-            # Create external_account credentials JSON
             jq -n \
               --arg audience "//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider" \
               --arg sa "circleci-sa@vijayproject-486406.iam.gserviceaccount.com" \
@@ -75,7 +73,8 @@ jobs:
               --region $REGION \
               --allow-unauthenticated \
               --project $PROJECT_ID \
-              --port 8080
+              --port 8080 \
+              --set-secrets ADMIN_PASS=ADMIN_PASS:latest
 
 workflows:
   deploy-workflow:
