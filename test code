@@ -1,0 +1,199 @@
+version: 2.1
+
+description: >
+  Wiz CLI for CircleCI: install, SSM auth, code (dir) scan, IaC scan, Docker scan,
+  optional GCP Workload Identity auth. Publish as ORG-Name/wiz-security (adjust if your CircleCI namespace differs).
+
+display:
+  home_url: https://www.wiz.io
+  source_url: https://github.com/ORG-Name/Wiz-Test-Internal
+
+commands:
+
+  install:
+    description: Download wizcli once per job; add other steps after this.
+    parameters:
+      version:
+        type: string
+        default: latest
+        description: "Release tag, e.g. latest or 1.2.3."
+    steps:
+      - run:
+          name: Install wizcli (<< parameters.version >>)
+          command: |
+            curl -fsSL -o wizcli \
+              "https://downloads.wiz.io/v1/wizcli/<< parameters.version >>/wizcli-linux-amd64"
+            chmod +x ./wizcli
+            ./wizcli version
+
+  authenticate:
+    description: >
+      Load Wiz client ID/secret from AWS SSM into WIZ_ID and WIZ_SECRET ($BASH_ENV).
+      Run aws-cli/setup (or equivalent) first.
+    parameters:
+      client-id-param:
+        type: string
+        default: wiz-cli-circle-ci-client-id
+      client-secret-param:
+        type: string
+        default: wiz-cli-circle-ci-client-secret
+    steps:
+      - run:
+          name: Fetch Wiz credentials from SSM
+          command: |
+            WIZ_ID=$(aws ssm get-parameter --name "<< parameters.client-id-param >>" \
+              --with-decryption --query Parameter.Value --output text)
+            WIZ_SECRET=$(aws ssm get-parameter --name "<< parameters.client-secret-param >>" \
+              --with-decryption --query Parameter.Value --output text)
+            echo "export WIZ_ID=$WIZ_ID" >> "$BASH_ENV"
+            echo "export WIZ_SECRET=$WIZ_SECRET" >> "$BASH_ENV"
+
+  code-scan:
+    description: >
+      Directory scan (SAST, SCA, secrets). Requires install + authenticate.
+    parameters:
+      path:
+        type: string
+        default: "."
+      scan-name:
+        type: string
+        default: "Wiz Code Scan"
+      policy:
+        type: string
+        default: "Default vulnerabilities policy,Default secrets policy"
+    steps:
+      - run:
+          name: "Wiz Code Scan — << parameters.scan-name >>"
+          command: |
+            source "$BASH_ENV"
+            ./wizcli scan dir "<< parameters.path >>" \
+              --name "<< parameters.scan-name >>" \
+              --policy "<< parameters.policy >>" \
+              --client-id "$WIZ_ID" \
+              --client-secret "$WIZ_SECRET"
+
+  iac-scan:
+    description: >
+      IaC scan (Terraform, CFN, K8s, etc.). Requires install + authenticate.
+    parameters:
+      path:
+        type: string
+        default: "."
+      scan-name:
+        type: string
+        default: "Wiz IaC Scan"
+      policy:
+        type: string
+        default: "Default IaC policy"
+    steps:
+      - run:
+          name: "Wiz IaC Scan — << parameters.scan-name >>"
+          command: |
+            source "$BASH_ENV"
+            ./wizcli iac scan --path "<< parameters.path >>" \
+              --name "<< parameters.scan-name >>" \
+              --policy "<< parameters.policy >>" \
+              --client-id "$WIZ_ID" \
+              --client-secret "$WIZ_SECRET"
+
+  gcp-wif-auth:
+    description: >
+      OIDC → GCP via Workload Identity Federation. Sets GOOGLE_APPLICATION_CREDENTIALS
+      and runs gcloud auth login. Needs gcloud + jq on the image.
+    parameters:
+      audience:
+        type: string
+        default: ""
+        description: >
+          Full WIF audience URI. If empty, uses env var AUDIENCE at runtime.
+      service-account:
+        type: env_var_name
+        default: SERVICE_ACCOUNT
+      oidc-token:
+        type: env_var_name
+        default: CIRCLE_OIDC_TOKEN
+    steps:
+      - run:
+          name: GCP WIF auth
+          command: |
+            set -euo pipefail
+            echo "$<< parameters.oidc-token >>" > oidc_token.txt
+            AUD="<< parameters.audience >>"
+            if [ -z "$AUD" ]; then
+              AUD="${AUDIENCE:?Set parameter audience or env AUDIENCE}"
+            fi
+            SA="$<< parameters.service-account >>"
+            jq -n \
+              --arg audience "$AUD" \
+              --arg sa "$SA" \
+              '{
+                type: "external_account",
+                audience: $AUDIENCE,
+                subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+                token_url: "https://sts.googleapis.com/v1/token",
+                service_account_impersonation_url: ("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" + $sa + ":generateAccessToken"),
+                credential_source: { file: "oidc_token.txt", format: { type: "text" } }
+              }' > cred.json
+            export GOOGLE_APPLICATION_CREDENTIALS="$PWD/cred.json"
+            echo "export GOOGLE_APPLICATION_CREDENTIALS=$PWD/cred.json" >> "$BASH_ENV"
+            gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS"
+
+  docker-scan:
+    description: Docker image scan. Requires install + authenticate; use setup_remote_docker if needed.
+    parameters:
+      image:
+        type: string
+        description: Full image ref, e.g. repo/app:tag
+      scan-name:
+        type: string
+        default: "Wiz Docker Scan"
+      policy:
+        type: string
+        default: "Default vulnerabilities policy"
+      soft-fail:
+        type: boolean
+        default: false
+    steps:
+      - run:
+          name: "Wiz Docker Scan — << parameters.scan-name >>"
+          command: |
+            source "$BASH_ENV"
+            FAIL_FLAG=()
+            if [ "<< parameters.soft-fail >>" = "true" ]; then
+              FAIL_FLAG=(--soft-fail)
+            fi
+            ./wizcli docker scan \
+              --image "<< parameters.image >>" \
+              --name "<< parameters.scan-name >>" \
+              --policy "<< parameters.policy >>" \
+              "${FAIL_FLAG[@]}" \
+              --client-id "$WIZ_ID" \
+              --client-secret "$WIZ_SECRET"
+
+examples:
+
+  wiz-scans:
+    description: Code + IaC + Docker after AWS SSM auth.
+    usage:
+      version: 2.1
+      orbs:
+        aws-cli: circleci/aws-cli@5.4.1
+        wiz: ORG-Name/wiz-security@1.0.0
+      jobs:
+        scan:
+          docker:
+            - image: cimg/base:stable
+          steps:
+            - checkout
+            - aws-cli/setup:
+                role_arn: arn:aws:iam::123456789012:role/ci
+                region: us-east-1
+            - wiz/install
+            - wiz/authenticate
+            - wiz/code-scan:
+                scan-name: "My service — code"
+            - wiz/iac-scan:
+                scan-name: "My service — IaC"
+            - wiz/docker-scan:
+                image: "my-registry/app:${CIRCLE_SHA1}"
+                soft-fail: true
