@@ -1,0 +1,70 @@
+version: 2.1
+
+description: >
+  Wiz CLI for CircleCI: install, SSM auth, code (dir) scan, IaC scan, Docker scan,
+  optional GCP Workload Identity auth. Publish as ORG-Name/wiz-security (adjust if your CircleCI namespace differs).
+
+display:
+  home_url: https://www.wiz.io
+  source_url: https://github.com/ORG-Name/Wiz-Test-Internal
+
+commands:
+
+  install:
+    description: Download wizcli once per job; add other steps after this.
+    parameters:
+      version:
+        type: string
+        default: latest
+        description: "Release tag, e.g. latest or 1.2.3."
+    steps:
+      - run:
+          name: Install wizcli (<< parameters.version >>)
+          command: |
+            curl -fsSL -o wizcli \
+              "https://downloads.wiz.io/v1/wizcli/<< parameters.version >>/wizcli-linux-amd64"
+            chmod +x ./wizcli
+            ./wizcli version
+
+
+  gcp-wif-auth:
+    description: >
+      OIDC → GCP via Workload Identity Federation. Sets GOOGLE_APPLICATION_CREDENTIALS
+      and runs gcloud auth login. Needs gcloud + jq on the image.
+    parameters:
+      audience:
+        type: string
+        default: ""
+        description: >
+          Full WIF audience URI. If empty, uses env var AUDIENCE at runtime.
+      service-account:
+        type: env_var_name
+        default: SERVICE_ACCOUNT
+      oidc-token:
+        type: env_var_name
+        default: CIRCLE_OIDC_TOKEN
+    steps:
+      - run:
+          name: GCP WIF auth
+          command: |
+            set -euo pipefail
+            echo "$<< parameters.oidc-token >>" > oidc_token.txt
+            AUD="<< parameters.audience >>"
+            if [ -z "$AUD" ]; then
+              AUD="${AUDIENCE:?Set parameter audience or env AUDIENCE}"
+            fi
+            SA="$<< parameters.service-account >>"
+            jq -n \
+              --arg audience "$AUD" \
+              --arg sa "$SA" \
+              '{
+                type: "external_account",
+                audience: $AUDIENCE,
+                subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+                token_url: "https://sts.googleapis.com/v1/token",
+                service_account_impersonation_url: ("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" + $sa + ":generateAccessToken"),
+                credential_source: { file: "oidc_token.txt", format: { type: "text" } }
+              }' > cred.json
+            export GOOGLE_APPLICATION_CREDENTIALS="$PWD/cred.json"
+            echo "export GOOGLE_APPLICATION_CREDENTIALS=$PWD/cred.json" >> "$BASH_ENV"
+            gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS"

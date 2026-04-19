@@ -1,5 +1,16 @@
 version: 2.1
 
+# Wiz commands live only in wiz-orb.yml → publish once, then CircleCI pulls them by version here.
+# No duplicate orb YAML belongs in this file — that would defeat the purpose of publishing.
+
+orbs:
+  aws-cli: circleci/aws-cli@5.4.1
+  # Must match orb publish target (often same as GitHub org namespace). Validate fails locally until published.
+  wiz: customorb/scan@1.0.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOBS
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
   deploy:
     docker:
@@ -12,71 +23,77 @@ jobs:
     steps:
       - checkout
 
-      - setup_remote_docker
-
-      # ---- Install Docker CLI + jq ----
+      # ── 1. PRE-REQUISITES ──────────────────────────────────────────────────
       - run:
-          name: Install Docker CLI and jq
+          name: Install System Dependencies
           command: |
             apt-get update
-            apt-get install -y docker.io jq
+            apt-get install -y wget unzip curl jq docker.io
 
-      # -------- AUTH WITH WIF --------
-      - run:
-          name: Authenticate with WIF
-          command: |
-            echo "$CIRCLE_OIDC_TOKEN" > oidc_token.txt
+      - setup_remote_docker
 
-            jq -n \
-              --arg audience "//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider" \
-              --arg sa "circleci-sa@vijayproject-486406.iam.gserviceaccount.com" \
-              '{
-                type: "external_account",
-                audience: $audience,
-                subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
-                token_url: "https://sts.googleapis.com/v1/token",
-                service_account_impersonation_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/\($sa):generateAccessToken",
-                credential_source: {
-                  file: "oidc_token.txt",
-                  format: { type: "text" }
-                }
-              }' > cred.json
+      # ── 2. WIZ SETUP ──────────────────────────────────────────────────────
+      #- aws-cli/setup:
+         # role_arn: arn:aws:iam::2332323:role/wiz-cicd-circleci-role-ORG-Name
+         # region: us-east-1
 
-            export GOOGLE_APPLICATION_CREDENTIALS="$PWD/cred.json"
-            gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS"
+  #    - wiz/install
+  #    - wiz/authenticate
 
-      # -------- BUILD DOCKER IMAGE --------
+      #- wiz/code-scan:
+       #   scan-name: "DEVOPS test SCAN - Code"
+       #   policy: "Default vulnerabilities policy,Default secrets policy"
+
+      #- wiz/iac-scan:
+      #    scan-name: "DEVOPS test SCAN - Terraform"
+      #    policy: "Default IaC policy"
+
+      # WIF audience: set CircleCI env var AUDIENCE (Project Settings or Context).
+      # The orb reads it at runtime when `audience` is omitted — see wiz/gcp-wif-auth in wiz-orb.yml.
+      # Alternative: - wiz/gcp-wif-auth: { audience: "//iam.googleapis.com/projects/..." }
+      - wiz/gcp-wif-auth: {}
+
       - run:
           name: Build Docker Image
           command: |
-            docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME .
+            docker build -t "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:$CIRCLE_SHA1" .
 
-      # -------- DOCKER LOGIN USING ACCESS TOKEN --------
       - run:
-          name: Docker Login via Access Token
+          name: Docker Login & Push
           command: |
-            ACCESS_TOKEN=$(gcloud auth print-access-token)
-            echo "$ACCESS_TOKEN" | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev
+            gcloud auth print-access-token | \
+              docker login -u oauth2accesstoken --password-stdin \
+              "https://$REGION-docker.pkg.dev"
+            docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:$CIRCLE_SHA1"
 
-      # -------- PUSH IMAGE --------
-      - run:
-          name: Push Docker Image
-          command: |
-            docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME
+       # non-blocking; remove to make it a hard gate
 
-      # -------- DEPLOY CLOUD RUN --------
+      # ── 8. DEPLOY TO STAGING ──────────────────────────────────────────────
       - run:
-          name: Deploy to Cloud Run
+          name: Deploy to Staging
           command: |
-            gcloud run deploy my-service \
-              --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME \
-              --region $REGION \
+            gcloud run deploy app-staging \
+              --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:latest" \
+              --region "$REGION" \
+              --project "$PROJECT_ID" \
               --allow-unauthenticated \
-              --project $PROJECT_ID \
               --port 8080 \
               --set-secrets ADMIN_PASS=ADMIN_PASS:latest
+
+            STAGING_URL=$(gcloud run services describe app-staging \
+              --region "$REGION" --project "$PROJECT_ID" \
+              --format='value(status.url)')
+            echo "export STAGING_URL=$STAGING_URL" >> $BASH_ENV
+            echo "Staging URL: $STAGING_URL"
+
+
+
+
 
 workflows:
   deploy-workflow:
     jobs:
+      # If AUDIENCE is stored in a Context (not Project env vars), attach it:
+      # - deploy:
+      #     context: your-context-name
       - deploy
