@@ -53,7 +53,7 @@ jobs:
       # The orb reads it at runtime when `audience` is omitted — see wiz/gcp-wif-auth in wiz-orb.yml.
       # Alternative: - wiz/gcp-wif-auth: { audience: "//iam.googleapis.com/projects/..." }
       - wiz/gcp-wif-auth: {}
-      
+
       - run:
           name: Build Docker Image
           command: |

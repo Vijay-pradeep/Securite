@@ -69,5 +69,3 @@ commands:
             export GOOGLE_APPLICATION_CREDENTIALS="$PWD/cred.json"
             echo "export GOOGLE_APPLICATION_CREDENTIALS=$PWD/cred.json" >> "$BASH_ENV"
             gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS"
-
-  
