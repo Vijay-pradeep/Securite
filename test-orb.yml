@@ -2,7 +2,7 @@ version: 2.1
 
 description: >
   Wiz CLI for CircleCI: install, SSM auth, code (dir) scan, IaC scan, Docker scan,
-  optional GCP Workload Identity auth. Publish as ORG-Name/wiz-security (adjust if your CircleCI namespace differs).
+  #optional GCP Workload Identity auth. Publish as ORG-Name/wiz-security (adjust if your CircleCI namespace differs).
 
 display:
   home_url: https://www.wiz.io
