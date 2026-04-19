@@ -50,7 +50,7 @@ commands:
           command: |
             set -euo pipefail
             echo "$<< parameters.oidc-token >>" > oidc_token.txt
-            AUD="<< parameters.audience >>"
+            AUD="$AUDIENCE"
             if [ -z "$AUD" ]; then
               AUD="${AUDIENCE:?Set parameter audience or env AUDIENCE}"
             fi
