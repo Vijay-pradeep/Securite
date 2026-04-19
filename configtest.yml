@@ -1,0 +1,103 @@
+version: 2.1
+
+# Wiz commands live only in wiz-orb.yml → publish once, then CircleCI pulls them by version here.
+# No duplicate orb YAML belongs in this file — that would defeat the purpose of publishing.
+
+orbs:
+  aws-cli: circleci/aws-cli@5.4.1
+  # Must match orb publish target (often same as GitHub org namespace). Validate fails locally until published.
+  wiz: ORG-Name/wiz-security@1.0.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOBS
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  deploy:
+    docker:
+      - image: google/cloud-sdk:slim
+
+    environment:
+      REGION: us-central1
+      IMAGE_NAME: app
+
+    steps:
+      - checkout
+
+      # ── 1. PRE-REQUISITES ──────────────────────────────────────────────────
+      - run:
+          name: Install System Dependencies
+          command: |
+            apt-get update
+            apt-get install -y wget unzip curl jq docker.io
+
+      - setup_remote_docker
+
+      # ── 2. WIZ SETUP ──────────────────────────────────────────────────────
+      - aws-cli/setup:
+          role_arn: arn:aws:iam::470757607219:role/wiz-cicd-circleci-role-ORG-Name
+          region: us-east-1
+
+      - wiz/install
+      - wiz/authenticate
+
+      #- wiz/code-scan:
+       #   scan-name: "DEVOPS test SCAN - Code"
+       #   policy: "Default vulnerabilities policy,Default secrets policy"
+
+      #- wiz/iac-scan:
+      #    scan-name: "DEVOPS test SCAN - Terraform"
+      #    policy: "Default IaC policy"
+
+      # WIF audience: set CircleCI env var AUDIENCE (Project Settings or Context).
+      # The orb reads it at runtime when `audience` is omitted — see wiz/gcp-wif-auth in wiz-orb.yml.
+      # Alternative: - wiz/gcp-wif-auth: { audience: "//iam.googleapis.com/projects/..." }
+      - wiz/gcp-wif-auth: {}
+
+      - run:
+          name: Build Docker Image
+          command: |
+            docker build -t "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:$CIRCLE_SHA1" .
+
+      - run:
+          name: Docker Login & Push
+          command: |
+            gcloud auth print-access-token | \
+              docker login -u oauth2accesstoken --password-stdin \
+              "https://$REGION-docker.pkg.dev"
+            docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:$CIRCLE_SHA1"
+
+      - wiz/docker-scan:
+          image: "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:$CIRCLE_SHA1"
+          scan-name: "DEVOPS test SCAN - Docker"
+          policy: "Default vulnerabilities policy"
+          soft-fail: true            # non-blocking; remove to make it a hard gate
+
+      # ── 8. DEPLOY TO STAGING ──────────────────────────────────────────────
+      - run:
+          name: Deploy to Staging
+          command: |
+            gcloud run deploy app-staging \
+              --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:latest" \
+              --region "$REGION" \
+              --project "$PROJECT_ID" \
+              --allow-unauthenticated \
+              --port 8080 \
+              --set-secrets ADMIN_PASS=ADMIN_PASS:latest
+
+            STAGING_URL=$(gcloud run services describe app-staging \
+              --region "$REGION" --project "$PROJECT_ID" \
+              --format='value(status.url)')
+            echo "export STAGING_URL=$STAGING_URL" >> $BASH_ENV
+            echo "Staging URL: $STAGING_URL"
+
+
+
+
+
+workflows:
+  deploy-workflow:
+    jobs:
+      # If AUDIENCE is stored in a Context (not Project env vars), attach it:
+      # - deploy:
+      #     context: your-context-name
+      - deploy
