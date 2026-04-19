@@ -6,7 +6,8 @@ description: >
 
 display:
   home_url: https://www.wiz.io
-  source_url: https://github.com/ORG-Name/Wiz-Test-Internal
+  source_url: https://github.com/Vijay-pradeep/Securite
+
 
 commands:
 
@@ -59,7 +60,7 @@ commands:
               --arg sa "$SA" \
               '{
                 type: "external_account",
-                audience: $AUDIENCE,
+                audience: $audience,
                 subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
                 token_url: "https://sts.googleapis.com/v1/token",
                 service_account_impersonation_url: ("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" + $sa + ":generateAccessToken"),
@@ -68,3 +69,5 @@ commands:
             export GOOGLE_APPLICATION_CREDENTIALS="$PWD/cred.json"
             echo "export GOOGLE_APPLICATION_CREDENTIALS=$PWD/cred.json" >> "$BASH_ENV"
             gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS"
+
+  

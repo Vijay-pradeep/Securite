@@ -19,6 +19,7 @@ jobs:
     environment:
       REGION: us-central1
       IMAGE_NAME: app
+      AUDIENCE: "//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider"
 
     steps:
       - checkout
@@ -51,8 +52,8 @@ jobs:
       # WIF audience: set CircleCI env var AUDIENCE (Project Settings or Context).
       # The orb reads it at runtime when `audience` is omitted — see wiz/gcp-wif-auth in wiz-orb.yml.
       # Alternative: - wiz/gcp-wif-auth: { audience: "//iam.googleapis.com/projects/..." }
-      - wiz/gcp-wif-auth:
-        audience: "//iam.googleapis.com/projects/930514070373/locations/global/workloadIdentityPools/circleci-pool/providers/circleci-provider"
+      - wiz/gcp-wif-auth: {}
+      
       - run:
           name: Build Docker Image
           command: |
